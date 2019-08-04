@@ -199,8 +199,7 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
       // Create the texture and pass it to ARCore session to be filled during update().
       backgroundRenderer.createOnGlThread(/*context=*/ this);
 
-      virtualObject.createOnGlThread(/*context=*/ this,  "models/face-texture.png");
-      virtualObject.setMaterialProperties(0.0f, 2.0f, 0.5f, 6.0f);
+      virtualObject.createOnGlThread(/*context=*/ this);
 
     } catch (IOException e) {
       Log.e(TAG, "Failed to read an asset file", e);
@@ -211,6 +210,7 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
   public void onSurfaceChanged(GL10 gl, int width, int height) {
     displayRotationHelper.onSurfaceChanged(width, height);
     GLES20.glViewport(0, 0, width, height);
+    virtualObject.setDimensions(width, height);
   }
 
   @Override
@@ -245,21 +245,14 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
       float[] viewmtx = new float[16];
       camera.getViewMatrix(viewmtx, 0);
 
-      // Compute lighting from average intensity of the image.
-      // The first three components are color scaling factors.
-      // The last one is the average pixel intensity in gamma space.
-      final float[] colorCorrectionRgba = new float[4];
-      frame.getLightEstimate().getColorCorrection(colorCorrectionRgba, 0);
-
       for (AugmentedFace face : session.getAllTrackables(AugmentedFace.class)) {
         virtualObject.setToAugmentedFace(face);
-        float[] color4f = { 1f, 1f, 1f, 1f };
 
         face.getCenterPose().toMatrix(anchorMatrix, 0);
 
         // Update and draw the model and its shadow.
         virtualObject.updateModelMatrix(anchorMatrix, 1f);
-        virtualObject.draw(viewmtx, projmtx, colorCorrectionRgba, color4f);
+        virtualObject.draw(viewmtx, projmtx);
       }
 
     } catch (Throwable t) {
