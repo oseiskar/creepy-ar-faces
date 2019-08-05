@@ -28,6 +28,7 @@ import com.google.ar.core.AugmentedFace;
 import com.google.ar.core.Camera;
 import com.google.ar.core.Config;
 import com.google.ar.core.Frame;
+import com.google.ar.core.Pose;
 import com.google.ar.core.Session;
 import com.google.ar.core.examples.java.common.helpers.CameraPermissionHelper;
 import com.google.ar.core.examples.java.common.helpers.DisplayRotationHelper;
@@ -253,6 +254,20 @@ public class HelloArActivity extends AppCompatActivity implements GLSurfaceView.
         // Update and draw the model and its shadow.
         virtualObject.updateModelMatrix(anchorMatrix, 1f);
         virtualObject.draw(viewmtx, projmtx);
+
+        backgroundRenderer.draw(frame);
+
+        /*float rotAx[] = new float[]{ 0, 0, 1 };
+        double ang = Math.PI;
+        float si = (float)Math.sin(ang*0.5);
+        float co = (float)Math.cos(ang*0.5);*/
+        face.getCenterPose()
+                //.compose(Pose.makeRotation(rotAx[0]*si, rotAx[1]*si, rotAx[2]*si, co))
+                .compose(Pose.makeTranslation(0,0.02f,0))
+                .toMatrix(anchorMatrix, 0);
+        virtualObject.updateModelMatrix(anchorMatrix, 1f);
+
+        virtualObject.drawSecondPass(viewmtx, projmtx);
       }
 
     } catch (Throwable t) {

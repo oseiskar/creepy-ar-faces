@@ -23,25 +23,12 @@ import com.google.ar.core.AugmentedFace;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
 
 /** Renders an object loaded from an OBJ file in OpenGL. */
 public class ObjectRenderer {
   private static final String TAG = ObjectRenderer.class.getSimpleName();
-
-  /**
-   * Blend mode.
-   *
-   * @see #setBlendMode(BlendMode)
-   */
-  public enum BlendMode {
-    /** Multiplies the destination color by the source alpha. */
-    Shadow,
-    /** Normal alpha blending. */
-    Grid
-  }
 
   // Shader names.
   private static final String VERTEX_SHADER_NAME = "shaders/uv.vert";
@@ -59,7 +46,7 @@ public class ObjectRenderer {
   private int indexBufferId;
   private int indexCount;
 
-  private int program, secondPass;
+  private int program;
   private final int[] textures = new int[1];
 
   // Shader location: model view projection matrix.
@@ -72,22 +59,10 @@ public class ObjectRenderer {
   private int texCoordAttribute;
 
   private int textureUniform;
-  private int secondPassTexCoords;
-  private int secondPassPositions;
+  private int whichPassUniform;
   private static final int TEXCOORDS_PER_VERTEX = 2;
   private static final int QUAD_COORDS_PER_VERTEX = 2;
   private static final int FLOAT_SIZE = 4;
-  private static final float[] QUAD_COORDS =
-          new float[] {
-                  -1.0f, -1.0f, -1.0f, +1.0f, +1.0f, -1.0f, +1.0f, +1.0f,
-          };
-
-  private static final float[] QUAD_TEX_COORDS = new float[] {0, 1, 0, 0, 1, 1, 1, 0};
-
-  private FloatBuffer quadCoords;
-  private FloatBuffer quadTexCoords;
-
-  private BlendMode blendMode = BlendMode.Grid;
 
   // Temporary matrices allocated here to reduce number of allocations for each frame.
   private final float[] modelMatrix = new float[16];
@@ -121,30 +96,6 @@ public class ObjectRenderer {
     GLES20.glUseProgram(program);
     ShaderUtil.checkGLError(TAG, "Program creation");
 
-    secondPass = GLES20.glCreateProgram();
-    GLES20.glAttachShader(secondPass, ShaderUtil.loadGLShader(TAG, context, GLES20.GL_VERTEX_SHADER, "shaders/copy.vert"));
-    GLES20.glAttachShader(secondPass, ShaderUtil.loadGLShader(TAG, context, GLES20.GL_FRAGMENT_SHADER, "shaders/copy.frag"));
-    GLES20.glLinkProgram(secondPass);
-    GLES20.glUseProgram(secondPass);
-    ShaderUtil.checkGLError(TAG, "Second pass program creation");
-
-    // screen quad
-    int numVertices = 4;
-    if (numVertices != QUAD_COORDS.length / QUAD_COORDS_PER_VERTEX) {
-      throw new RuntimeException("Unexpected number of vertices in BackgroundRenderer.");
-    }
-    ByteBuffer bbCoords = ByteBuffer.allocateDirect(QUAD_COORDS.length * FLOAT_SIZE);
-    bbCoords.order(ByteOrder.nativeOrder());
-    quadCoords = bbCoords.asFloatBuffer();
-    quadCoords.put(QUAD_COORDS);
-    quadCoords.position(0);
-
-    ByteBuffer bbTexCoordsTransformed =
-            ByteBuffer.allocateDirect(numVertices * TEXCOORDS_PER_VERTEX * FLOAT_SIZE);
-    bbTexCoordsTransformed.order(ByteOrder.nativeOrder());
-    quadTexCoords = bbTexCoordsTransformed.asFloatBuffer();
-
-
     //modelViewUniform = GLES20.glGetUniformLocation(program, "u_ModelView");
     modelViewProjectionUniform = GLES20.glGetUniformLocation(program, "u_ModelViewProjection");
 
@@ -154,9 +105,8 @@ public class ObjectRenderer {
 
     ShaderUtil.checkGLError(TAG, "Program parameters");
 
-    secondPassPositions = GLES20.glGetAttribLocation(secondPass, "a_Position");
-    secondPassTexCoords = GLES20.glGetAttribLocation(secondPass, "a_TexCoord");
-    textureUniform = GLES20.glGetUniformLocation(secondPass, "u_Texture");
+    textureUniform = GLES20.glGetUniformLocation(program, "u_Texture");
+    whichPassUniform = GLES20.glGetUniformLocation(program, "u_WhichPass");
 
     GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
     GLES20.glGenTextures(textures.length, textures, 0);
@@ -223,15 +173,6 @@ public class ObjectRenderer {
   public void setDimensions(int w, int h) {
       width = w;
       height = h;
-  }
-
-  /**
-   * Selects the blending mode for rendering.
-   *
-   * @param blendMode The blending mode. Null indicates no blending (opaque rendering).
-   */
-  public void setBlendMode(BlendMode blendMode) {
-    this.blendMode = blendMode;
   }
 
   /**
@@ -302,6 +243,8 @@ public class ObjectRenderer {
     // Set the ModelViewProjection matrix in the shader.
     //GLES20.glUniformMatrix4fv(modelViewUniform, 1, false, modelViewMatrix, 0);
     GLES20.glUniformMatrix4fv(modelViewProjectionUniform, 1, false, modelViewProjectionMatrix, 0);
+    GLES20.glUniform1f(whichPassUniform, 0f);
+    GLES20.glUniform1i(textureUniform, 0);
 
     // Enable vertex arrays
     GLES20.glEnableVertexAttribArray(positionAttribute);
@@ -310,20 +253,10 @@ public class ObjectRenderer {
 
     ShaderUtil.checkGLError(TAG, "After glEnableVertexAttribArray");
 
-    if (blendMode != null) {
-      //GLES20.glDepthMask(false);
-      GLES20.glEnable(GLES20.GL_BLEND);
-      switch (blendMode) {
-        case Shadow:
-          // Multiplicative blending function for Shadow.
-          GLES20.glBlendFunc(GLES20.GL_ZERO, GLES20.GL_ONE_MINUS_SRC_ALPHA);
-          break;
-        case Grid:
-          // Grid, additive blending function.
-          GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
-          break;
-      }
-    }
+    //GLES20.glDepthMask(false);
+    GLES20.glEnable(GLES20.GL_BLEND);
+    // Grid, additive blending function.
+    GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
 
     GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, indexBufferId);
     GLES20.glDrawElements(GLES20.GL_TRIANGLES, indexCount, GLES20.GL_UNSIGNED_SHORT, 0);
@@ -331,10 +264,7 @@ public class ObjectRenderer {
 
     ShaderUtil.checkGLError(TAG, "After glDrawElements");
 
-    if (blendMode != null) {
-      GLES20.glDisable(GLES20.GL_BLEND);
-      //GLES20.glDepthMask(true);
-    }
+    GLES20.glDisable(GLES20.GL_BLEND);
 
     GLES20.glDisable(GLES20.GL_CULL_FACE);
 
@@ -351,52 +281,77 @@ public class ObjectRenderer {
     updateFaceTexture();
 
     ShaderUtil.checkGLError(TAG, "After draw");
-
-    doSecondPass();
   }
 
-  private void doSecondPass() {
-    // Write image texture coordinates.
-    quadTexCoords.position(0);
-    quadTexCoords.put(QUAD_TEX_COORDS);
+  public void drawSecondPass(
+          float[] cameraView,
+          float[] cameraPerspective) {
 
-    // Ensure position is rewound before use.
-    quadTexCoords.position(0);
+    ShaderUtil.checkGLError(TAG, "Before draw2");
 
-    // No need to test or write depth, the screen quad has arbitrary depth, and is expected
-    // to be drawn first.
-    GLES20.glDisable(GLES20.GL_DEPTH_TEST);
-    GLES20.glDepthMask(false);
+    GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT);
 
-    GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+    Matrix.multiplyMM(modelViewMatrix, 0, cameraView, 0, modelMatrix, 0);
+    Matrix.multiplyMM(modelViewProjectionMatrix, 0, cameraPerspective, 0, modelViewMatrix, 0);
+
+    GLES20.glUseProgram(program);
+    ShaderUtil.checkGLError(TAG, "After glUseProgram");
+
+    GLES20.glCullFace(GLES20.GL_FRONT);
+    GLES20.glEnable(GLES20.GL_CULL_FACE);
+
     GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textures[0]);
+    GLES20.glUniform1i(textureUniform, 0);
 
-    GLES20.glUseProgram(secondPass);
+    // Set the vertex attributes.
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vertexBufferId);
 
-    // Set the vertex positions.
     GLES20.glVertexAttribPointer(
-            secondPassPositions, QUAD_COORDS_PER_VERTEX, GLES20.GL_FLOAT, false, 0, quadCoords);
-
-    // Set the texture coordinates.
+            positionAttribute, COORDS_PER_VERTEX, GLES20.GL_FLOAT, false, 0, verticesBaseAddress);
+    //GLES20.glVertexAttribPointer(normalAttribute, 3, GLES20.GL_FLOAT, false, 0, normalsBaseAddress);
     GLES20.glVertexAttribPointer(
-            secondPassTexCoords, TEXCOORDS_PER_VERTEX, GLES20.GL_FLOAT, false, 0, quadTexCoords);
+            texCoordAttribute, 2, GLES20.GL_FLOAT, false, 0, texCoordsBaseAddress);
+
+    GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+
+    ShaderUtil.checkGLError(TAG, "After glBindBuffers");
+
+    // Set the ModelViewProjection matrix in the shader.
+    //GLES20.glUniformMatrix4fv(modelViewUniform, 1, false, modelViewMatrix, 0);
+    GLES20.glUniformMatrix4fv(modelViewProjectionUniform, 1, false, modelViewProjectionMatrix, 0);
+    GLES20.glUniform1f(whichPassUniform, 1f);
+    GLES20.glUniform1i(textureUniform, 0);
 
     // Enable vertex arrays
-    GLES20.glEnableVertexAttribArray(secondPassPositions);
-    GLES20.glEnableVertexAttribArray(secondPassTexCoords);
+    GLES20.glEnableVertexAttribArray(positionAttribute);
+    //GLES20.glEnableVertexAttribArray(normalAttribute);
+    GLES20.glEnableVertexAttribArray(texCoordAttribute);
 
-    GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
+    ShaderUtil.checkGLError(TAG, "After glEnableVertexAttribArray");
+
+    //GLES20.glDepthMask(false);
+    GLES20.glEnable(GLES20.GL_BLEND);
+    // Grid, additive blending function.
+    GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
+
+    GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, indexBufferId);
+    GLES20.glDrawElements(GLES20.GL_TRIANGLES, indexCount, GLES20.GL_UNSIGNED_SHORT, 0);
+    GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    ShaderUtil.checkGLError(TAG, "After glDrawElements");
+
+    GLES20.glDisable(GLES20.GL_BLEND);
+
+    GLES20.glDisable(GLES20.GL_CULL_FACE);
 
     // Disable vertex arrays
-    GLES20.glDisableVertexAttribArray(secondPassPositions);
-    GLES20.glDisableVertexAttribArray(secondPassTexCoords);
+    GLES20.glDisableVertexAttribArray(positionAttribute);
+    //GLES20.glDisableVertexAttribArray(normalAttribute);
+    GLES20.glDisableVertexAttribArray(texCoordAttribute);
 
-    // Restore the depth state for further drawing.
-    GLES20.glDepthMask(true);
-    GLES20.glEnable(GLES20.GL_DEPTH_TEST);
     GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
 
-    ShaderUtil.checkGLError(TAG, "second pass");
+    ShaderUtil.checkGLError(TAG, "After draw2");
   }
 
   private void updateFaceTexture() {
@@ -412,7 +367,7 @@ public class ObjectRenderer {
           byte u = uvBytes[srcIdx*4];
           byte v = uvBytes[srcIdx*4 + 1];
           int faceX = (int)(((u & 0xff) / 255.0) * FACE_TEXTURE_W);
-          int faceY = (int)((1.0 - ((v & 0xff) / 255.0)) * FACE_TEXTURE_H);
+          int faceY = (int)(((v & 0xff) / 255.0) * FACE_TEXTURE_H);
           if (faceX >= 0 && faceX < FACE_TEXTURE_W && faceY >= 0 && faceY < FACE_TEXTURE_H) {
             int idx = faceY*FACE_TEXTURE_W + faceX;
             faceBuffer[idx*4] = videoBytes[srcIdx*4];
