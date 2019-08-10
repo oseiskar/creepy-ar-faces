@@ -17,7 +17,6 @@ package com.google.ar.core.examples.java.common.helpers;
 import android.app.Activity;
 import android.support.design.widget.BaseTransientBottomBar;
 import android.support.design.widget.Snackbar;
-import android.view.View;
 import android.widget.TextView;
 
 /**
@@ -27,26 +26,8 @@ import android.widget.TextView;
 public final class SnackbarHelper {
   private static final int BACKGROUND_COLOR = 0xbf323232;
   private Snackbar messageSnackbar;
-  private enum DismissBehavior { HIDE, SHOW, FINISH };
+  private enum DismissBehavior { HIDE, FINISH };
   private int maxLines = 2;
-  private String lastMessage = "";
-
-  public boolean isShowing() {
-    return messageSnackbar != null;
-  }
-
-  /** Shows a snackbar with a given message. */
-  public void showMessage(Activity activity, String message) {
-    if (!message.isEmpty() && (!isShowing() || !lastMessage.equals(message))) {
-      lastMessage = message;
-      show(activity, message, DismissBehavior.HIDE);
-    }
-  }
-
-  /** Shows a snackbar with a given message, and a dismiss button. */
-  public void showMessageWithDismiss(Activity activity, String message) {
-    show(activity, message, DismissBehavior.SHOW);
-  }
 
   /**
    * Shows a snackbar with a given error message. When dismissed, will finish the activity. Useful
@@ -54,30 +35,6 @@ public final class SnackbarHelper {
    */
   public void showError(Activity activity, String errorMessage) {
     show(activity, errorMessage, DismissBehavior.FINISH);
-  }
-
-  /**
-   * Hides the currently showing snackbar, if there is one. Safe to call from any thread. Safe to
-   * call even if snackbar is not shown.
-   */
-  public void hide(Activity activity) {
-    if (!isShowing()) {
-      return;
-    }
-    lastMessage = "";
-    Snackbar messageSnackbarToHide = messageSnackbar;
-    messageSnackbar = null;
-    activity.runOnUiThread(
-        new Runnable() {
-          @Override
-          public void run() {
-            messageSnackbarToHide.dismiss();
-          }
-        });
-  }
-
-  public void setMaxLines(int lines) {
-    maxLines = lines;
   }
 
   private void show(
@@ -95,12 +52,7 @@ public final class SnackbarHelper {
             if (dismissBehavior != DismissBehavior.HIDE) {
               messageSnackbar.setAction(
                   "Dismiss",
-                  new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                      messageSnackbar.dismiss();
-                    }
-                  });
+                      v -> messageSnackbar.dismiss());
               if (dismissBehavior == DismissBehavior.FINISH) {
                 messageSnackbar.addCallback(
                     new BaseTransientBottomBar.BaseCallback<Snackbar>() {
