@@ -57,9 +57,7 @@ public class BackgroundRenderer {
   }
 
   /**
-   * Allocates and initializes OpenGL resources needed by the background renderer. Must be called on
-   * the OpenGL thread, typically in {@link GLSurfaceView.Renderer#onSurfaceCreated(GL10,
-   * EGLConfig)}.
+   * Allocates and initializes OpenGL resources needed by the background renderer.
    *
    * @param context Needed to access shader source.
    */
@@ -116,8 +114,6 @@ public class BackgroundRenderer {
    * {@link com.google.ar.core.Camera#getProjectionMatrix(float[], int, float, float)} will
    * accurately follow static physical objects. This must be called <b>before</b> drawing virtual
    * content.
-   *
-   * @param frame The current {@code Frame} as returned by {@link Session#update()}.
    */
   public void draw(@NonNull Frame frame) {
     // If display rotation changed (also includes view size change), we need to re-query the uv

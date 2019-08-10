@@ -30,7 +30,6 @@ import com.google.ar.core.AugmentedFace;
 import com.google.ar.core.Camera;
 import com.google.ar.core.Config;
 import com.google.ar.core.Frame;
-import com.google.ar.core.Pose;
 import com.google.ar.core.Session;
 import com.google.ar.core.exceptions.CameraNotAvailableException;
 import com.google.ar.core.exceptions.UnavailableApkTooOldException;
@@ -61,7 +60,9 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
   private DisplayRotationHelper displayRotationHelper;
 
   private final BackgroundRenderer backgroundRenderer = new BackgroundRenderer();
-  private final ObjectRenderer virtualObject = new ObjectRenderer();
+  private final FaceGeometry faceGeometry = new FaceGeometry();
+  private final FaceMapper faceMapper = new FaceMapper(faceGeometry);
+  private final FaceRenderer faceRenderer = new FaceRenderer(faceGeometry);
 
   // Temporary matrix allocated here to reduce number of allocations for each frame.
   private final float[] anchorMatrix = new float[16];
@@ -195,7 +196,9 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
       // Create the texture and pass it to ARCore session to be filled during update().
       backgroundRenderer.createOnGlThread(/*context=*/ this);
 
-      virtualObject.createOnGlThread(/*context=*/ this);
+      faceGeometry.createOnGlThread();
+      faceMapper.createOnGlThread(this);
+      faceRenderer.createOnGlThread(this);
 
     } catch (IOException e) {
       Log.e(TAG, "Failed to read an asset file", e);
@@ -206,7 +209,7 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
   public void onSurfaceChanged(GL10 gl, int width, int height) {
     displayRotationHelper.onSurfaceChanged(width, height);
     GLES20.glViewport(0, 0, width, height);
-    virtualObject.setDimensions(width, height);
+    faceMapper.setDimensions(width, height);
   }
 
   @Override
@@ -242,27 +245,14 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
       camera.getViewMatrix(viewmtx, 0);
 
       for (AugmentedFace face : session.getAllTrackables(AugmentedFace.class)) {
-        virtualObject.setToAugmentedFace(face);
+        faceGeometry.setToAugmentedFace(face);
+        faceMapper.updateModelMatrix(face.getCenterPose());
 
-        face.getCenterPose().toMatrix(anchorMatrix, 0);
-
-        // Update and draw the model and its shadow.
-        virtualObject.updateModelMatrix(anchorMatrix, 1f);
-        virtualObject.draw(viewmtx, projmtx);
-
+        faceMapper.draw(viewmtx, projmtx);
         backgroundRenderer.draw(frame);
 
-        /*float rotAx[] = new float[]{ 0, 0, 1 };
-        double ang = Math.PI;
-        float si = (float)Math.sin(ang*0.5);
-        float co = (float)Math.cos(ang*0.5);*/
-        face.getCenterPose()
-                //.compose(Pose.makeRotation(rotAx[0]*si, rotAx[1]*si, rotAx[2]*si, co))
-                .compose(Pose.makeTranslation(0,0.02f,0))
-                .toMatrix(anchorMatrix, 0);
-        virtualObject.updateModelMatrix(anchorMatrix, 1f);
-
-        virtualObject.drawSecondPass(viewmtx, projmtx);
+        faceRenderer.updateModelMatrix(face.getCenterPose());
+        faceRenderer.draw(viewmtx, projmtx, faceMapper.getFaceTextureId());
       }
 
     } catch (Throwable t) {
