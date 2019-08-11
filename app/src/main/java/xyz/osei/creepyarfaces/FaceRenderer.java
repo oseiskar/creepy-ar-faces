@@ -8,35 +8,35 @@ import com.google.ar.core.Pose;
 
 import java.io.IOException;
 
-public class FaceRenderer {
+abstract class FaceRenderer {
   private static final String TAG = FaceRenderer.class.getSimpleName();
-
-  // Shader names.
-  private static final String VERTEX_SHADER_NAME = "shaders/uv.vert";
-  private static final String FRAGMENT_SHADER_NAME = "shaders/4eyes.frag";
 
   private int program;
 
   // Shader location: model view projection matrix.
   //private int modelViewUniform;
-  private int modelViewProjectionUniform;
+  protected int modelViewProjectionUniform;
 
   // Shader location: object attributes.
-  private int positionAttribute;
-  //private int normalAttribute;
-  private int texCoordAttribute;
+  protected int positionAttribute;
+  //protected int normalAttribute;
+  protected int texCoordAttribute;
 
-  private int textureUniform;
+  protected int textureUniform;
 
   // Temporary matrices allocated here to reduce number of allocations for each frame.
-  private final float[] modelMatrix = new float[16];
-  private final float[] modelViewMatrix = new float[16];
-  private final float[] modelViewProjectionMatrix = new float[16];
+  protected final float[] modelMatrix = new float[16];
+  protected final float[] modelViewMatrix = new float[16];
+  protected final float[] modelViewProjectionMatrix = new float[16];
 
   private final FaceGeometry faceGeometry;
+  private final String vertexShaderName;
+  private final String fragmentShaderName;
 
-  public FaceRenderer(FaceGeometry geometry) {
+  public FaceRenderer(FaceGeometry geometry, String vertexShader, String fragmentShader) {
     faceGeometry = geometry;
+    vertexShaderName = vertexShader;
+    fragmentShaderName = fragmentShader;
   }
 
   /**
@@ -47,9 +47,9 @@ public class FaceRenderer {
   public void createOnGlThread(Context context)
       throws IOException {
     final int vertexShader =
-        ShaderUtil.loadGLShader(TAG, context, GLES20.GL_VERTEX_SHADER, VERTEX_SHADER_NAME);
+        ShaderUtil.loadGLShader(TAG, context, GLES20.GL_VERTEX_SHADER, vertexShaderName);
     final int fragmentShader =
-        ShaderUtil.loadGLShader(TAG, context, GLES20.GL_FRAGMENT_SHADER, FRAGMENT_SHADER_NAME);
+        ShaderUtil.loadGLShader(TAG, context, GLES20.GL_FRAGMENT_SHADER, fragmentShaderName);
 
     program = GLES20.glCreateProgram();
     GLES20.glAttachShader(program, vertexShader);
@@ -76,14 +76,7 @@ public class FaceRenderer {
   }
 
   public void updateModelMatrix(Pose pose) {
-    /*float rotAx[] = new float[]{ 0, 0, 1 };
-    double ang = Math.PI;
-    float si = (float)Math.sin(ang*0.5);
-    float co = (float)Math.cos(ang*0.5);*/
-    pose
-      //.compose(Pose.makeRotation(rotAx[0]*si, rotAx[1]*si, rotAx[2]*si, co))
-      .compose(Pose.makeTranslation(0,0.02f,0))
-      .toMatrix(this.modelMatrix, 0);
+    pose.toMatrix(this.modelMatrix, 0);
   }
 
   public void draw(
@@ -137,5 +130,35 @@ public class FaceRenderer {
     GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
 
     ShaderUtil.checkGLError(TAG, "After draw");
+  }
+}
+
+class FaceRenderer4Eyes extends FaceRenderer {
+  public FaceRenderer4Eyes(FaceGeometry geometry) {
+    super(geometry,"shaders/uv.vert", "shaders/4eyes.frag");
+  }
+
+  @Override
+  public void updateModelMatrix(Pose pose) {
+    /*float rotAx[] = new float[]{ 0, 0, 1 };
+    double ang = Math.PI;
+    float si = (float)Math.sin(ang*0.5);
+    float co = (float)Math.cos(ang*0.5);*/
+    pose
+            //.compose(Pose.makeRotation(rotAx[0]*si, rotAx[1]*si, rotAx[2]*si, co))
+            .compose(Pose.makeTranslation(0,0.02f,0))
+            .toMatrix(this.modelMatrix, 0);
+  }
+}
+
+class FaceRendererUpsideDown extends FaceRenderer {
+  public FaceRendererUpsideDown(FaceGeometry geometry) {
+    super(geometry,"shaders/uv.vert", "shaders/upsidedown.frag");
+  }
+}
+
+class FaceRendererLargeNose extends FaceRenderer {
+  public FaceRendererLargeNose(FaceGeometry geometry) {
+    super(geometry,"shaders/uv.vert", "shaders/largenose.frag");
   }
 }

@@ -23,6 +23,7 @@ import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.view.View;
 import android.widget.Toast;
 
 import com.google.ar.core.ArCoreApk;
@@ -38,7 +39,9 @@ import com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException;
 import com.google.ar.core.exceptions.UnavailableSdkTooOldException;
 import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationException;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
@@ -62,10 +65,9 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
   private final BackgroundRenderer backgroundRenderer = new BackgroundRenderer();
   private final FaceGeometry faceGeometry = new FaceGeometry();
   private final FaceMapper faceMapper = new FaceMapper(faceGeometry);
-  private final FaceRenderer faceRenderer = new FaceRenderer(faceGeometry);
 
-  // Temporary matrix allocated here to reduce number of allocations for each frame.
-  private final float[] anchorMatrix = new float[16];
+  private final List<FaceRenderer> rendererList = new ArrayList<>();
+  private int rendererIndex;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -83,6 +85,11 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
     surfaceView.setWillNotDraw(false);
 
     installRequested = false;
+
+    rendererList.add(new FaceRenderer4Eyes(faceGeometry));
+    rendererList.add(new FaceRendererUpsideDown(faceGeometry));
+    rendererList.add(new FaceRendererLargeNose(faceGeometry));
+    rendererIndex = 0;
   }
 
   @Override
@@ -198,7 +205,7 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
 
       faceGeometry.createOnGlThread();
       faceMapper.createOnGlThread(this);
-      faceRenderer.createOnGlThread(this);
+      for (FaceRenderer renderer : rendererList) renderer.createOnGlThread(this);
 
     } catch (IOException e) {
       Log.e(TAG, "Failed to read an asset file", e);
@@ -251,13 +258,18 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
         faceMapper.draw(viewmtx, projmtx);
         backgroundRenderer.draw(frame);
 
-        faceRenderer.updateModelMatrix(face.getCenterPose());
-        faceRenderer.draw(viewmtx, projmtx, faceMapper.getFaceTextureId());
+        FaceRenderer renderer = rendererList.get(rendererIndex);
+        renderer.updateModelMatrix(face.getCenterPose());
+        renderer.draw(viewmtx, projmtx, faceMapper.getFaceTextureId());
       }
 
     } catch (Throwable t) {
       // Avoid crashing the application due to unhandled exceptions.
       Log.e(TAG, "Exception on the OpenGL thread", t);
     }
+  }
+
+  public void nextFilter(View view) {
+    rendererIndex = (rendererIndex + 1) % rendererList.size();
   }
 }
