@@ -89,6 +89,9 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
     rendererList.add(new FaceRenderer4Eyes(faceGeometry));
     rendererList.add(new FaceRendererUpsideDown(faceGeometry));
     rendererList.add(new FaceRendererLargeNose(faceGeometry));
+    rendererList.add(new FaceRendererUnshadedTexture(faceGeometry, "textures/grid.png"));
+    rendererList.add(new FaceRendererShadedTexture(faceGeometry, "textures/white.png"));
+    //rendererList.add(new FaceRendererUV(faceGeometry));
     rendererIndex = 0;
   }
 
@@ -253,12 +256,14 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
 
       for (AugmentedFace face : session.getAllTrackables(AugmentedFace.class)) {
         faceGeometry.setToAugmentedFace(face);
-        faceMapper.updateModelMatrix(face.getCenterPose());
-
-        faceMapper.draw(viewmtx, projmtx);
-        backgroundRenderer.draw(frame);
-
         FaceRenderer renderer = rendererList.get(rendererIndex);
+
+        if (renderer.needsFaceMapper()) {
+          faceMapper.updateModelMatrix(face.getCenterPose());
+          faceMapper.draw(viewmtx, projmtx);
+          backgroundRenderer.draw(frame);
+        }
+
         renderer.updateModelMatrix(face.getCenterPose());
         renderer.draw(viewmtx, projmtx, faceMapper.getFaceTextureId());
       }

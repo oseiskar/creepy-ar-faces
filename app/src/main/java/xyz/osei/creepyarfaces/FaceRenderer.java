@@ -1,25 +1,28 @@
 package xyz.osei.creepyarfaces;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.opengl.GLES20;
+import android.opengl.GLUtils;
 import android.opengl.Matrix;
 
 import com.google.ar.core.Pose;
 
 import java.io.IOException;
 
-abstract class FaceRenderer {
+class FaceRenderer {
   private static final String TAG = FaceRenderer.class.getSimpleName();
 
   private int program;
 
   // Shader location: model view projection matrix.
-  //private int modelViewUniform;
+  protected int modelViewUniform;
   protected int modelViewProjectionUniform;
 
   // Shader location: object attributes.
   protected int positionAttribute;
-  //protected int normalAttribute;
+  protected int normalAttribute;
   protected int texCoordAttribute;
 
   protected int textureUniform;
@@ -32,6 +35,9 @@ abstract class FaceRenderer {
   private final FaceGeometry faceGeometry;
   private final String vertexShaderName;
   private final String fragmentShaderName;
+
+  protected boolean usesFaceMapper = true;
+  protected boolean usesNormals = false;
 
   public FaceRenderer(FaceGeometry geometry, String vertexShader, String fragmentShader) {
     faceGeometry = geometry;
@@ -58,11 +64,12 @@ abstract class FaceRenderer {
     GLES20.glUseProgram(program);
     ShaderUtil.checkGLError(TAG, "Program creation");
 
-    //modelViewUniform = GLES20.glGetUniformLocation(program, "u_ModelView");
+    if (usesNormals) modelViewUniform = GLES20.glGetUniformLocation(program, "u_ModelView");
     modelViewProjectionUniform = GLES20.glGetUniformLocation(program, "u_ModelViewProjection");
 
     positionAttribute = GLES20.glGetAttribLocation(program, "a_Position");
-    //normalAttribute = GLES20.glGetAttribLocation(program, "a_Normal");
+    if (usesNormals) normalAttribute = GLES20.glGetAttribLocation(program, "a_Normal");
+    else normalAttribute = -1;
     texCoordAttribute = GLES20.glGetAttribLocation(program, "a_TexCoord");
 
     ShaderUtil.checkGLError(TAG, "Program parameters");
@@ -77,6 +84,10 @@ abstract class FaceRenderer {
 
   public void updateModelMatrix(Pose pose) {
     pose.toMatrix(this.modelMatrix, 0);
+  }
+
+  public boolean needsFaceMapper() {
+    return usesFaceMapper;
   }
 
   public void draw(
@@ -102,16 +113,16 @@ abstract class FaceRenderer {
     GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, faceTextureId);
     GLES20.glUniform1i(textureUniform, 0);
 
-    faceGeometry.bindGeometryBuffers(positionAttribute, texCoordAttribute, -1);
+    faceGeometry.bindGeometryBuffers(positionAttribute, texCoordAttribute, normalAttribute);
 
     // Set the ModelViewProjection matrix in the shader.
-    //GLES20.glUniformMatrix4fv(modelViewUniform, 1, false, modelViewMatrix, 0);
+    if (usesNormals) GLES20.glUniformMatrix4fv(modelViewUniform, 1, false, modelViewMatrix, 0);
     GLES20.glUniformMatrix4fv(modelViewProjectionUniform, 1, false, modelViewProjectionMatrix, 0);
     GLES20.glUniform1i(textureUniform, 0);
 
     // Enable vertex arrays
     GLES20.glEnableVertexAttribArray(positionAttribute);
-    //GLES20.glEnableVertexAttribArray(normalAttribute);
+    if (usesNormals) GLES20.glEnableVertexAttribArray(normalAttribute);
     GLES20.glEnableVertexAttribArray(texCoordAttribute);
 
     ShaderUtil.checkGLError(TAG, "After glEnableVertexAttribArray");
@@ -123,7 +134,7 @@ abstract class FaceRenderer {
 
     faceGeometry.drawElements();
 
-    faceGeometry.unbindGeometryBuffers(positionAttribute, texCoordAttribute, -1);
+    faceGeometry.unbindGeometryBuffers(positionAttribute, texCoordAttribute, normalAttribute);
 
     GLES20.glDisable(GLES20.GL_BLEND);
     GLES20.glDisable(GLES20.GL_CULL_FACE);
@@ -140,12 +151,7 @@ class FaceRenderer4Eyes extends FaceRenderer {
 
   @Override
   public void updateModelMatrix(Pose pose) {
-    /*float rotAx[] = new float[]{ 0, 0, 1 };
-    double ang = Math.PI;
-    float si = (float)Math.sin(ang*0.5);
-    float co = (float)Math.cos(ang*0.5);*/
     pose
-            //.compose(Pose.makeRotation(rotAx[0]*si, rotAx[1]*si, rotAx[2]*si, co))
             .compose(Pose.makeTranslation(0,0.02f,0))
             .toMatrix(this.modelMatrix, 0);
   }
@@ -160,5 +166,67 @@ class FaceRendererUpsideDown extends FaceRenderer {
 class FaceRendererLargeNose extends FaceRenderer {
   public FaceRendererLargeNose(FaceGeometry geometry) {
     super(geometry,"shaders/uv.vert", "shaders/largenose.frag");
+  }
+}
+
+class FaceRenderWithTexture extends FaceRenderer {
+  private static final String TAG = FaceRenderWithTexture.class.getSimpleName();
+
+  private final int[] textures = new int[1];
+  final String textureFilename;
+
+  public FaceRenderWithTexture(FaceGeometry geometry, String textureName, String vertexShader, String fragmentShader) {
+    super(geometry,vertexShader, fragmentShader);
+    textureFilename = textureName;
+    usesFaceMapper = false;
+  }
+
+  @Override
+  public void draw(
+          float[] cameraView,
+          float[] cameraPerspective,
+          int faceTextureId) {
+    super.draw(cameraView, cameraPerspective, textures[0]);
+  }
+
+  public void createOnGlThread(Context context) throws IOException {
+    super.createOnGlThread(context);
+    Bitmap textureBitmap = BitmapFactory.decodeStream(context.getAssets().open(textureFilename));
+
+    GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+    GLES20.glGenTextures(textures.length, textures, 0);
+    GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textures[0]);
+
+    GLES20.glTexParameteri(
+            GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR_MIPMAP_LINEAR);
+    GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+
+    GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, textureBitmap, 0);
+    GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_2D);
+    GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+
+    textureBitmap.recycle();
+
+    ShaderUtil.checkGLError(TAG, "Texture loading");
+  }
+}
+
+class FaceRendererUnshadedTexture extends FaceRenderWithTexture {
+  public FaceRendererUnshadedTexture(FaceGeometry geometry, String textureName) {
+    super(geometry,textureName,"shaders/uv.vert", "shaders/unshadedtexture.frag");
+  }
+}
+
+class FaceRendererShadedTexture extends FaceRenderWithTexture {
+  public FaceRendererShadedTexture(FaceGeometry geometry, String textureName) {
+    super(geometry,textureName,"shaders/object.vert", "shaders/object.frag");
+    usesNormals = true;
+  }
+}
+
+class FaceRendererUV extends FaceRenderer {
+  public FaceRendererUV(FaceGeometry geometry) {
+    super(geometry,"shaders/uv.vert", "shaders/uv.frag");
+    usesFaceMapper = false;
   }
 }

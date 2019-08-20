@@ -17,14 +17,9 @@ precision mediump float;
 
 uniform sampler2D u_Texture;
 
-uniform vec4 u_LightingParameters;
-uniform vec4 u_MaterialParameters;
-uniform vec4 u_ColorCorrectionParameters;
-
 varying vec3 v_ViewPosition;
 varying vec3 v_ViewNormal;
 varying vec2 v_TexCoord;
-uniform vec4 u_ObjColor;
 
 void main() {
     // We support approximate sRGB gamma.
@@ -33,14 +28,14 @@ void main() {
     const float kMiddleGrayGamma = 0.466;
 
     // Unpack lighting and material parameters for better naming.
-    vec3 viewLightDirection = u_LightingParameters.xyz;
-    vec3 colorShift = u_ColorCorrectionParameters.rgb;
-    float averagePixelIntensity = u_ColorCorrectionParameters.a;
+    vec3 viewLightDirection = vec3(0.250, 0.866, 0.433);
+    vec3 colorShift = vec3(1.0, 1.0, 1.0);
+    float averagePixelIntensity = 0.2;
 
-    float materialAmbient = u_MaterialParameters.x;
-    float materialDiffuse = u_MaterialParameters.y;
-    float materialSpecular = u_MaterialParameters.z;
-    float materialSpecularPower = u_MaterialParameters.w;
+    const float materialAmbient = 0.1;
+    const float materialDiffuse = 0.9;
+    const float materialSpecular = 0.1;
+    const float materialSpecularPower = 6.0;
 
     // Normalize varying parameters, because they are linearly interpolated in the vertex shader.
     vec3 viewFragmentDirection = normalize(v_ViewPosition);
@@ -48,13 +43,6 @@ void main() {
 
     // Flip the y-texture coordinate to address the texture from top-left.
     vec4 objectColor = texture2D(u_Texture, vec2(v_TexCoord.x, 1.0 - v_TexCoord.y));
-
-    // Apply color to grayscale image only if the alpha of u_ObjColor is
-    // greater and equal to 255.0.
-    if (u_ObjColor.a >= 255.0) {
-      float intensity = objectColor.r;
-      objectColor.rgb = u_ObjColor.rgb * intensity / 255.0;
-    }
 
     // Apply inverse SRGB gamma to the texture before making lighting calculations.
     objectColor.rgb = pow(objectColor.rgb, vec3(kInverseGamma));
@@ -74,9 +62,9 @@ void main() {
 
     vec3 color = objectColor.rgb * (ambient + diffuse) + specular;
     // Apply SRGB gamma before writing the fragment color.
-    color.rgb = pow(color, vec3(kGamma));
+    //color.rgb = pow(color, vec3(kGamma));
     // Apply average pixel intensity and color shift
-    color *= colorShift * (averagePixelIntensity / kMiddleGrayGamma);
+    //color *= colorShift * (averagePixelIntensity / kMiddleGrayGamma);
     gl_FragColor.rgb = color;
     gl_FragColor.a = objectColor.a;
 }
